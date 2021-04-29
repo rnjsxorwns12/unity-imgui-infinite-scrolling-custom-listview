@@ -79,7 +79,7 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
         public bool directInput;
         public string textField;
         public Texture image;
-        public Texture activeImage;
+        public Color activeColor;
         public GameObject onClick;
         public string function;
     }
@@ -130,6 +130,7 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
                 rect.FindPropertyRelative("height").floatValue = 1;
                 property.FindPropertyRelative("fontColor").colorValue = Color.white;
                 property.FindPropertyRelative("textAnchor").enumValueIndex = (int)TextAnchor.MiddleCenter;
+                property.FindPropertyRelative("activeColor").colorValue = new Color(1, 1, 1, 0.4f);
                 init.boolValue = true;
             }
             int indent = EditorGUI.indentLevel;
@@ -222,7 +223,7 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
                     if (elementTypeProperty.enumValueIndex == (int)Element.ElementType.ImageButton)
                     {
                         position.y += position.height * 1.2f;
-                        EditorGUI.PropertyField(position, property.FindPropertyRelative("activeImage"));
+                        EditorGUI.PropertyField(position, property.FindPropertyRelative("activeColor"));
                         position.y += position.height * 1.2f;
                         SerializedProperty onClick = property.FindPropertyRelative("onClick");
                         EditorGUI.PropertyField(position, onClick);
@@ -300,6 +301,8 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
     private float touchSpeed;
     private float touchSpeedOrigin;
     private delegate void OnClick(int index);
+    private GUIStyle[] guiStyles;
+    private OnClick[] onClicks;
     [HideInInspector]
     public IList List;
     private float DrawPosition
@@ -315,10 +318,50 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
         }
     }
 
+    public int Index
+    {
+        set
+        {
+            if (List == null || value < 0 || value >= List.Count) return;
+            DrawPosition = Screen.height * Mathf.Max(0, 1 - margin.bottom - margin.top) * (itemHeight + itemInterval) * value;
+        }
+    }
+
     private void Awake()
     {
         Instance = this;
-        List = itemClass == null ? null : (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemClass.GetClass()));
+        guiStyles = new GUIStyle[itemElements.Length];
+        onClicks = new OnClick[itemElements.Length];
+        for (int i = 0; itemElements != null && i < itemElements.Length; i++)
+        {
+            Element element = itemElements[i];
+            guiStyles[i] = null;
+            onClicks[i] = null;
+            if (element.elementType == Element.ElementType.Text)
+            {
+                guiStyles[i] = new GUIStyle();
+                guiStyles[i].alignment = element.textAnchor;
+                guiStyles[i].fontStyle = element.fontStyle;
+                guiStyles[i].font = element.font;
+                guiStyles[i].normal.textColor = element.fontColor;
+            }
+            else if (element.elementType == Element.ElementType.ImageButton)
+            {
+                if (element.onClick != null && !string.IsNullOrEmpty(element.function))
+                {
+                    string[] split = element.function.Split('.');
+                    if (split.Length == 2)
+                    {
+                        Component component = element.onClick.GetComponent(split[0]);
+                        if (component != null)
+                        {
+                            MethodInfo methodInfo = component.GetType().GetMethod(split[1]);
+                            if (methodInfo != null) onClicks[i] = (OnClick)methodInfo.CreateDelegate(typeof(OnClick), component);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private object GetFieldValue(out Type type, string field, object obj)
@@ -360,39 +403,6 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
         float iTotalHeight = iHeight + bg.height * itemInterval;
         float currY = drawPosition + iTotalHeight / 2 - bg.height * 0.5f + rect.y;
         int currIndex = (int)((drawPosition + iTotalHeight / 2) / iTotalHeight);
-        GUIStyle[] guiStyles = new GUIStyle[itemElements.Length];
-        OnClick[] onClicks = new OnClick[itemElements.Length];
-        for (int i = 0; itemElements != null && i < itemElements.Length; i++)
-        {
-            Element element = itemElements[i];
-            guiStyles[i] = null;
-            onClicks[i] = null;
-            if (element.elementType == Element.ElementType.Text)
-            {
-                guiStyles[i] = new GUIStyle();
-                guiStyles[i].alignment = element.textAnchor;
-                guiStyles[i].fontStyle = element.fontStyle;
-                guiStyles[i].font = element.font;
-                guiStyles[i].normal.textColor = element.fontColor;
-                guiStyles[i].fontSize = (int)(iHeight * Mathf.Min(element.rect.height, 1 - element.rect.y));
-            }
-            else if (element.elementType == Element.ElementType.ImageButton)
-            {
-                if (element.onClick != null && !string.IsNullOrEmpty(element.function))
-                {
-                    string[] split = element.function.Split('.');
-                    if (split.Length == 2)
-                    {
-                        Component component = element.onClick.GetComponent(split[0]);
-                        if(component != null)
-                        {
-                            MethodInfo methodInfo = component.GetType().GetMethod(split[1]);
-                            if (methodInfo != null) onClicks[i] = (OnClick)methodInfo.CreateDelegate(typeof(OnClick), component);
-                        }
-                    }
-                }
-            }
-        }
         for (int i = -Mathf.CeilToInt((currIndex * iTotalHeight - currY) / iTotalHeight); i <= Mathf.CeilToInt((currY + rect.height - (currIndex + 1) * iTotalHeight) / iTotalHeight) ; i++)
         {
             Rect itemRect = new Rect(0, (currIndex + i) * iTotalHeight - currY + (iTotalHeight - iHeight) / 2, rect.width, iHeight);
@@ -439,6 +449,7 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
                 if (element.elementType == Element.ElementType.Text)
                 {
                     string text = element.directInput ? element.textField : (objIndex >= 0 ? ((string)GetFieldValue(out Type type, element.textField, List[objIndex]) ?? string.Empty) : string.Empty);
+                    guiStyles[j].fontSize = (int)(elementRect.height * 0.9f);
                     float textWidth = guiStyles[j].CalcSize(new GUIContent(text)).x;
                     if (elementRect.width < textWidth)
                     {
@@ -450,7 +461,7 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
                 }
                 else
                 {
-                    Texture image = element.image;
+                    Color guiCol = GUI.color;
                     if (element.elementType == Element.ElementType.ImageButton)
                     {
                         Rect elementScreenRect = new Rect(bg.x + rect.x + itemRect.x + elementRect.x,
@@ -470,13 +481,14 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
                         {
                             if (Touch(elementScreenRect, touchPosOrigin) && Touch(elementScreenRect, touchPos))
                             {
-                                if (element.activeImage != null) image = element.activeImage;
+                                GUI.color = element.activeColor;
                                 if (touchId >= 0) touchButton = true;
                             }
                             if (GUI.Button(elementRect, GUIContent.none, GUIStyle.none) && onClicks[j] != null && objIndex >= 0) onClicks[j](objIndex);
                         }
                     }
-                    if (image != null) GUI.DrawTexture(elementRect, image);
+                    if (element.image != null) GUI.DrawTexture(elementRect, element.image);
+                    GUI.color = guiCol;
                 }
             }
             GUI.EndGroup();
@@ -489,6 +501,7 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
         int index = -1;
         if (List != null && List.Count > 0)
         {
+            print(indexOutOfRange + " % " + List.Count + (indexOutOfRange % List.Count));
             index = indexOutOfRange % List.Count;
             if (index < 0) index += List.Count;
         }
