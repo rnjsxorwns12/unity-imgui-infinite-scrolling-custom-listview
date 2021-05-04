@@ -83,6 +83,7 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
         public GameObject onClick;
         public string function;
     }
+#if UNITY_EDITOR
     [CustomPropertyDrawer(typeof(Element))]
     class ElementProperty : PropertyDrawer
     {
@@ -278,6 +279,9 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
             return EditorGUIUtility.singleLineHeight * 1.2f * itemCount;
         }
     }
+    [SerializeField]
+    private MonoScript itemClass;
+#endif
     public static InfiniteScrollingCustomListView Instance;
     [SerializeField]
     private Texture background;
@@ -289,8 +293,6 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
     private float itemHeight = 0.1f;
     [SerializeField, Range(0, 1)]
     private float itemInterval = 0.01f;
-    [SerializeField]
-    private MonoScript itemClass;
     [SerializeField]
     private Element[] itemElements;
     private float drawPosition;
@@ -501,7 +503,6 @@ public class InfiniteScrollingCustomListView : MonoBehaviour
         int index = -1;
         if (List != null && List.Count > 0)
         {
-            print(indexOutOfRange + " % " + List.Count + (indexOutOfRange % List.Count));
             index = indexOutOfRange % List.Count;
             if (index < 0) index += List.Count;
         }
