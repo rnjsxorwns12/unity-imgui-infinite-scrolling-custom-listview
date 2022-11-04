@@ -1,4 +1,3 @@
-﻿//https://github.com/rnjsxorwns12/unity-infinite-scrolling-custom-listview
 using System;
 using System.Collections;
 using System.Collections.Generic;
